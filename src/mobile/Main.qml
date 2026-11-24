@@ -230,6 +230,13 @@ ApplicationWindow {
                 font.pixelSize: 17
                 lineHeight: 1.35
                 lineHeightMode: Text.ProportionalHeight
+                // Keep the reader on the document; open draw.io / https / etc. outside.
+                onLinkActivated: (link) => Qt.openUrlExternally(link)
+
+                HoverHandler {
+                    cursorShape: parent.hoveredLink.length > 0 ? Qt.PointingHandCursor
+                                                              : Qt.ArrowCursor
+                }
             }
         }
 

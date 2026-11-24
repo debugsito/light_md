@@ -6,6 +6,7 @@
 #include <QActionGroup>
 #include <QApplication>
 #include <QCloseEvent>
+#include <QDesktopServices>
 #include <QDir>
 #include <QDragEnterEvent>
 #include <QDropEvent>
@@ -54,7 +55,13 @@ public:
         m_editor->setUndoRedoEnabled(true);
         m_editor->viewport()->installEventFilter(this);
         m_preview = new QTextBrowser(m_splitter);
-        m_preview->setOpenExternalLinks(true);
+        // Never navigate the preview itself — long draw.io / https links would
+        // blank the pane. Always hand the URL to the system browser/app.
+        m_preview->setOpenLinks(false);
+        connect(m_preview, &QTextBrowser::anchorClicked, this, [](const QUrl &url) {
+            if (url.isValid())
+                QDesktopServices::openUrl(url);
+        });
         QFont readFont = m_preview->font();
         readFont.setPointSizeF(readFont.pointSizeF() + 2);
         m_preview->setFont(readFont);
