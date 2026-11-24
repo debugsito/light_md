@@ -4,8 +4,13 @@ project(light_md VERSION 1.1.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+option(LIGHT_MD_BUILD_MOBILE "Build the QML mobile UI (desktop preview / future Android)" ON)
+
 find_package(Qt6 REQUIRED COMPONENTS Core Widgets PrintSupport)
 find_package(Qt6 COMPONENTS Test QUIET)
+if(LIGHT_MD_BUILD_MOBILE)
+    find_package(Qt6 REQUIRED COMPONENTS Quick QuickControls2)
+endif()
 
 qt_standard_project_setup()
 
@@ -55,4 +60,34 @@ if(BUILD_TESTING AND Qt6Test_FOUND)
     )
     target_link_libraries(light_md_core_tests PRIVATE light_md_core Qt6::Test)
     add_test(NAME light_md_core_tests COMMAND light_md_core_tests)
+endif()
+
+# Mobile / touch UI preview. Same Document core; QML shell for phones later.
+if(LIGHT_MD_BUILD_MOBILE)
+    qt_policy(SET QTP0001 NEW)
+    qt_add_executable(light_md_mobile
+        src/mobile/main.cpp
+        src/mobile/document_controller.cpp
+        src/mobile/document_controller.h
+    )
+    set_source_files_properties(src/mobile/Main.qml PROPERTIES
+        QT_RESOURCE_ALIAS Main.qml
+    )
+    qt_add_qml_module(light_md_mobile
+        URI light_md_mobile
+        VERSION 1.0
+        QML_FILES src/mobile/Main.qml
+        NO_PLUGIN
+    )
+    target_link_libraries(light_md_mobile PRIVATE
+        light_md_core
+        Qt6::Quick
+        Qt6::QuickControls2
+    )
+    # qt_add_qml_module creates build/light_md_mobile/ for QML artifacts;
+    # keep the binary in build/bin to avoid clashing with that directory.
+    set_target_properties(light_md_mobile PROPERTIES
+        WIN32_EXECUTABLE TRUE
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+    )
 endif()

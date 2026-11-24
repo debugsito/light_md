@@ -57,6 +57,15 @@ Or build an Arch package from a release tag with `packaging/arch/PKGBUILD` (upda
 
 On first launch under Omarchy, the theme defaults to **Omarchy** and updates when you run `omarchy theme set`. Elsewhere it defaults to **System**. Your choice is remembered.
 
+### Mobile UI preview (Linux / desktop QML)
+
+The same build can produce `build/bin/light_md_mobile`: a touch-oriented QML shell (Reader / Edit / Open / Save) on the shared `Document` core. This is the Android UI prototype; turn it off with `-DLIGHT_MD_BUILD_MOBILE=OFF`.
+
+```bash
+./build/bin/light_md_mobile path/to/file.md
+```
+
+
 ## Build on Windows (Qt 6 and MinGW)
 
 You need Qt 6 installed (for example in `C:\Qt`) with its CMake and Ninja.
