@@ -78,6 +78,25 @@ ApplicationWindow {
         })
     }
 
+    function openActivatedLink(link) {
+        const url = ("" + link).trim()
+        if (!url)
+            return
+        // Web / mail always leave the reader intact.
+        if (/^(https?:|mailto:)/i.test(url)) {
+            if (!Qt.openUrlExternally(url))
+                errorBanner.show("Could not open link: " + url)
+            return
+        }
+        // Local markdown (absolute file:// or relative *.md) opens in-app.
+        if (/\.(md|markdown|txt)([?#].*)?$/i.test(url) || url.startsWith("file:")) {
+            openDocumentUrl(url)
+            return
+        }
+        if (!Qt.openUrlExternally(url))
+            errorBanner.show("Could not open link: " + url)
+    }
+
     function finishSave(ok) {
         root.pendingSavePath = ""
         if (ok) {
@@ -230,8 +249,8 @@ ApplicationWindow {
                 font.pixelSize: 17
                 lineHeight: 1.35
                 lineHeightMode: Text.ProportionalHeight
-                // Keep the reader on the document; open draw.io / https / etc. outside.
-                onLinkActivated: (link) => Qt.openUrlExternally(link)
+                // Keep the reader on the document; open http(s) outside, local .md in-app.
+                onLinkActivated: (link) => root.openActivatedLink(link)
 
                 HoverHandler {
                     cursorShape: parent.hoveredLink.length > 0 ? Qt.PointingHandCursor

@@ -24,6 +24,7 @@
 #include <QPlainTextEdit>
 #include <QPrintDialog>
 #include <QPrinter>
+#include <QProcess>
 #include <QRegularExpression>
 #include <QScrollBar>
 #include <QSettings>
@@ -34,6 +35,7 @@
 #include <QTextCursor>
 #include <QTextDocument>
 #include <QTimer>
+#include <QUrl>
 #include <QVBoxLayout>
 #include <QWidget>
 
@@ -55,12 +57,11 @@ public:
         m_editor->setUndoRedoEnabled(true);
         m_editor->viewport()->installEventFilter(this);
         m_preview = new QTextBrowser(m_splitter);
-        // Never navigate the preview itself — long draw.io / https links would
-        // blank the pane. Always hand the URL to the system browser/app.
+        // Never navigate the preview itself — that blanks the pane on long
+        // draw.io URLs. Resolve and open via openPreviewLink() instead.
         m_preview->setOpenLinks(false);
-        connect(m_preview, &QTextBrowser::anchorClicked, this, [](const QUrl &url) {
-            if (url.isValid())
-                QDesktopServices::openUrl(url);
+        connect(m_preview, &QTextBrowser::anchorClicked, this, [this](const QUrl &url) {
+            openPreviewLink(url);
         });
         QFont readFont = m_preview->font();
         readFont.setPointSizeF(readFont.pointSizeF() + 2);
@@ -202,6 +203,49 @@ protected:
     }
 
 private:
+    static bool isMarkdownPath(const QString &path)
+    {
+        const QString suffix = QFileInfo(path).suffix().toLower();
+        return suffix == QStringLiteral("md") || suffix == QStringLiteral("markdown")
+            || suffix == QStringLiteral("txt");
+    }
+
+    QUrl resolvePreviewLink(const QUrl &link) const
+    {
+        if (!link.isRelative())
+            return link;
+        const QString baseDir = m_document.hasPath() ? QFileInfo(m_document.path()).absolutePath()
+                                                     : QDir::currentPath();
+        return QUrl::fromLocalFile(baseDir + QLatin1Char('/')).resolved(link);
+    }
+
+    void openPreviewLink(const QUrl &link)
+    {
+        if (!link.isValid() || link.isEmpty())
+            return;
+
+        const QUrl url = resolvePreviewLink(link);
+
+        // Local markdown: open inside light_md, never blank the preview pane.
+        if (url.isLocalFile()) {
+            const QString path = url.toLocalFile();
+            if (isMarkdownPath(path)) {
+                if (askSaveIfModified())
+                    loadFile(path);
+                return;
+            }
+        }
+
+        // http(s), mailto, draw.io, etc. — system handler, with xdg-open fallback.
+        if (QDesktopServices::openUrl(url))
+            return;
+        if (QProcess::startDetached(QStringLiteral("xdg-open"),
+                                    {url.toString(QUrl::FullyEncoded)}))
+            return;
+
+        m_status->setText(QStringLiteral("Could not open link: %1").arg(url.toString()));
+    }
+
     QAction *addOption(QMenu *menu, const QString &text, const QString &tip, const QKeySequence &keys)
     {
         auto *action = menu->addAction(text);
