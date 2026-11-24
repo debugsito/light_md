@@ -16,9 +16,11 @@ qt_add_executable(light_md
 
 target_include_directories(light_md PRIVATE src)
 target_link_libraries(light_md PRIVATE Qt6::Widgets Qt6::PrintSupport)
+target_compile_definitions(light_md PRIVATE LIGHT_MD_VERSION="${PROJECT_VERSION}")
 
 set_target_properties(light_md PROPERTIES
     WIN32_EXECUTABLE TRUE
+    MACOSX_BUNDLE TRUE
 )
 
 # "cmake --install build --prefix dist" creates a folder ready to copy
@@ -32,9 +34,9 @@ if(UNIX AND NOT APPLE)
             DESTINATION share/icons/hicolor/scalable/apps)
 endif()
 
-# Bundle Qt next to the binary on Windows portable installs only.
+# Bundle Qt next to the binary on Windows and macOS portable/app installs.
 # Linux packages link against system Qt (see packaging/arch/PKGBUILD).
-if(WIN32)
+if(WIN32 OR APPLE)
     qt_generate_deploy_app_script(
         TARGET light_md
         OUTPUT_SCRIPT deploy_script

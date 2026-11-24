@@ -4,7 +4,7 @@
 
 A lightweight Markdown editor in C++ and Qt 6, for everyone.
 
-Open a `.md` file and read the formatted page right away. Need to change something? Press **Ctrl+E** to edit. Prefer menus? Everything lives under **Options**, each with a keyboard shortcut.
+Write on the left, see the formatted result on the right. Format with the buttons at the top — no Markdown required. Prefer a quieter layout? Hide the buttons with **Ctrl+Shift+B**, or use **Options** (every action has a shortcut).
 
 ![light_md: the writing pane on the left and the formatted result on the right](docs/screenshot.png)
 
@@ -12,17 +12,21 @@ Open a `.md` file and read the formatted page right away. Need to change somethi
 
 ## What it does
 
-- Opens in **Reader** mode (formatted page only). **Ctrl+E** shows the writing pane; **Ctrl+R** or **Esc** returns to Read only.
+- **Classic layout by default**: file and format button bars plus write + preview panes.
+- Toggle **Show buttons** (**Ctrl+Shift+B**) for a minimal Options-only chrome.
+- Optional **Reader** mode (**Ctrl+E** / **Ctrl+R** / **Esc**) hides the writing pane; independent of the button bars.
+- Button visibility and the last Edit/Reader view are remembered across restarts and when opening another file.
 - **Options** menu in everyday words: New, Open, Save, Format, Theme, Help — every item has a shortcut.
 - Open and save `.md` documents, also by dragging them onto the window or using "Open with" from the file manager.
 - Export to PDF and print: the result looks just like the reading pane.
 - Word count and an unsaved-changes warning, including when closing the window.
-- Themes: **System** (desktop default), **Minimal** (quiet light look), **Omarchy** (live desktop theme on Linux). Windows and macOS keep **System** by default.
+- Themes: **System** (desktop default), **Minimal** (quiet light look), **Omarchy** (live desktop theme on Omarchy Linux only). Windows and macOS keep **System** by default.
 
 ## Keyboard shortcuts
 
 | Action | Shortcut |
 | --- | --- |
+| Show / hide buttons | Ctrl+Shift+B |
 | Edit document | Ctrl+E |
 | Read only | Ctrl+R or Esc |
 | New / Open / Save / Save as | Ctrl+N / Ctrl+O / Ctrl+S / Ctrl+Shift+S |
@@ -30,7 +34,7 @@ Open a `.md` file and read the formatted page right away. Need to change somethi
 | Undo / Redo | Ctrl+Z / Ctrl+Shift+Z (or Ctrl+Y) |
 | Bold / Italic / Link | Ctrl+B / Ctrl+I / Ctrl+K |
 | Big title / Subtitle | Ctrl+1 / Ctrl+2 |
-| Bullet / Numbered / Quote | Ctrl+Shift+8 / Ctrl+Shift+7 / Ctrl+Shift+Q |
+| Bullet / Numbered / Quote | Ctrl+Shift+8 / Ctrl+Shift+7 / Ctrl+Shift+. |
 | Theme System / Minimal / Omarchy | Ctrl+Shift+1 / Ctrl+Shift+2 / Ctrl+Shift+3 |
 | Help | F1 |
 
@@ -53,7 +57,7 @@ Install for your user (binary, `.desktop` entry, and icon):
 cmake --install build --prefix ~/.local
 ```
 
-Or build an Arch package from a release tag with `packaging/arch/PKGBUILD` (update `sha256sums` when publishing).
+Or use `packaging/arch/PKGBUILD` as a release template (the `v1.1.0` tag and real `sha256sums` are still pending).
 
 On first launch under Omarchy, the theme defaults to **Omarchy** and updates when you run `omarchy theme set`. Elsewhere it defaults to **System**. Your choice is remembered.
 

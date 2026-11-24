@@ -186,12 +186,17 @@ void ThemeManager::reloadOmarchy()
 
 QString ThemeManager::fingerprintOf(const QHash<QString, QString> &colors)
 {
-    // Only the keys that affect painting — enough to skip identical reapplies.
+    // Include every key used by paletteFromColors / styleSheetFromColors so a
+    // change to any of them triggers a repaint.
     return colors.value(QStringLiteral("background")) + QLatin1Char('|')
+        + colors.value(QStringLiteral("dark_background")) + QLatin1Char('|')
+        + colors.value(QStringLiteral("lighter_background")) + QLatin1Char('|')
         + colors.value(QStringLiteral("foreground")) + QLatin1Char('|')
+        + colors.value(QStringLiteral("dark_foreground")) + QLatin1Char('|')
+        + colors.value(QStringLiteral("light_foreground")) + QLatin1Char('|')
+        + colors.value(QStringLiteral("bright_foreground")) + QLatin1Char('|')
         + colors.value(QStringLiteral("accent")) + QLatin1Char('|')
         + colors.value(QStringLiteral("selection")) + QLatin1Char('|')
-        + colors.value(QStringLiteral("lighter_background")) + QLatin1Char('|')
         + colors.value(QStringLiteral("muted"));
 }
 
@@ -246,7 +251,8 @@ QHash<QString, QString> ThemeManager::omarchyFallbackColors()
         {QStringLiteral("light_foreground"), QStringLiteral("#cccccc")},
         {QStringLiteral("bright_foreground"), QStringLiteral("#ffffff")},
         {QStringLiteral("accent"), QStringLiteral("#FFD60A")},
-        {QStringLiteral("selection"), QStringLiteral("#333333")},
+        // Distinct from the pane background so selected text stays readable.
+        {QStringLiteral("selection"), QStringLiteral("#3D5A80")},
         {QStringLiteral("muted"), QStringLiteral("#444444")},
     };
 }
@@ -268,10 +274,11 @@ QPalette ThemeManager::paletteFromColors(const QHash<QString, QString> &colors) 
     const QColor base(colors.value(QStringLiteral("lighter_background"), background.name()));
     const QColor alternate(colors.value(QStringLiteral("dark_background"), background.darker(110).name()));
     const QColor accent(colors.value(QStringLiteral("accent"), QStringLiteral("#FFD60A")));
-    const QColor selection(colors.value(QStringLiteral("selection"), QStringLiteral("#333333")));
+    const QColor selection(colors.value(QStringLiteral("selection"), QStringLiteral("#3D5A80")));
     const QColor muted(colors.value(QStringLiteral("dark_foreground"),
                                     colors.value(QStringLiteral("muted"), QStringLiteral("#888888"))));
     const QColor button(colors.value(QStringLiteral("lighter_background"), background.lighter(115).name()));
+    const QColor selectedText(contrastForeground(selection));
 
     QPalette palette;
     palette.setColor(QPalette::Window, background);
@@ -283,7 +290,7 @@ QPalette ThemeManager::paletteFromColors(const QHash<QString, QString> &colors) 
     palette.setColor(QPalette::ButtonText, foreground);
     palette.setColor(QPalette::BrightText, colors.value(QStringLiteral("bright_foreground"), foreground.name()));
     palette.setColor(QPalette::Highlight, selection);
-    palette.setColor(QPalette::HighlightedText, foreground);
+    palette.setColor(QPalette::HighlightedText, selectedText);
     palette.setColor(QPalette::Link, accent);
     palette.setColor(QPalette::LinkVisited, accent.darker(110));
     palette.setColor(QPalette::ToolTipBase, alternate);
@@ -303,25 +310,30 @@ QString ThemeManager::styleSheetFromColors(const QHash<QString, QString> &colors
     const QString foreground = colors.value(QStringLiteral("foreground"), QStringLiteral("#e6e6e6"));
     const QString muted = colors.value(QStringLiteral("dark_foreground"),
                                        colors.value(QStringLiteral("muted"), QStringLiteral("#888888")));
-    const QString accent = colors.value(QStringLiteral("accent"), QStringLiteral("#FFD60A"));
-    const QString selection = colors.value(QStringLiteral("selection"), QStringLiteral("#333333"));
+    const QString selection = colors.value(QStringLiteral("selection"), QStringLiteral("#3D5A80"));
     const QString border = colors.value(QStringLiteral("muted"), muted);
-    const QString accentText = contrastForeground(QColor(accent));
-    Q_UNUSED(accentText);
+    const QString selectedText = contrastForeground(QColor(selection));
 
     return QStringLiteral(
                "QPlainTextEdit, QTextBrowser {"
                "  background-color: %1; color: %2; border: 1px solid %3;"
-               "  selection-background-color: %4; selection-color: %2; padding: 8px;"
+               "  selection-background-color: %4; selection-color: %5; padding: 8px;"
                "}"
-               "QMenuBar, QMenu { background-color: %5; color: %2; }"
-               "QMenu::item:selected, QMenuBar::item:selected { background-color: %4; }"
+               "QMenuBar, QMenu { background-color: %6; color: %2; }"
+               "QMenu::item:selected, QMenuBar::item:selected {"
+               "  background-color: %4; color: %5;"
+               "}"
                "QMenu { border: 1px solid %3; }"
                "QLabel { color: %2; }"
+               "QPushButton {"
+               "  background-color: %1; color: %2; border: 1px solid %3; padding: 4px 10px;"
+               "}"
+               "QPushButton:hover { border-color: %4; }"
+               "QPushButton:disabled { color: %7; }"
                "QSplitter::handle { background: %3; width: 1px; height: 1px; }"
-               "QScrollBar:vertical { background: %5; width: 10px; margin: 0; }"
+               "QScrollBar:vertical { background: %6; width: 10px; margin: 0; }"
                "QScrollBar::handle:vertical { background: %3; min-height: 24px; }"
-               "QScrollBar:horizontal { background: %5; height: 10px; margin: 0; }"
+               "QScrollBar:horizontal { background: %6; height: 10px; margin: 0; }"
                "QScrollBar::handle:horizontal { background: %3; min-width: 24px; }")
-        .arg(base, foreground, border, selection, background);
+        .arg(base, foreground, border, selection, selectedText, background, muted);
 }

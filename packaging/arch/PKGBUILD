@@ -1,4 +1,8 @@
 # Maintainer: community contribution for light_md
+#
+# Template for a future Arch package. The v${pkgver} GitHub tag and a real
+# sha256sums entry do not exist yet — keep sha256sums=('SKIP') until a release
+# is tagged, or build from a local source tree instead.
 pkgname=light_md
 pkgver=1.1.0
 pkgrel=1

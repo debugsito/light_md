@@ -11,6 +11,7 @@
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QHBoxLayout>
 #include <QInputDialog>
 #include <QKeyEvent>
 #include <QKeySequence>
@@ -23,6 +24,7 @@
 #include <QPlainTextEdit>
 #include <QPrintDialog>
 #include <QPrinter>
+#include <QPushButton>
 #include <QRegularExpression>
 #include <QSaveFile>
 #include <QScrollBar>
@@ -43,11 +45,21 @@ public:
     explicit MainWindow(ThemeManager *themes, const QString &initialFile = QString())
         : m_themes(themes)
     {
-        resize(960, 640);
+        resize(1100, 700);
 
         auto *central = new QWidget(this);
         auto *root = new QVBoxLayout(central);
         root->setContentsMargins(8, 8, 8, 8);
+
+        m_fileBar = new QWidget(central);
+        m_fileBarLayout = new QHBoxLayout(m_fileBar);
+        m_fileBarLayout->setContentsMargins(0, 0, 0, 0);
+        root->addWidget(m_fileBar);
+
+        m_formatBar = new QWidget(central);
+        m_formatBarLayout = new QHBoxLayout(m_formatBar);
+        m_formatBarLayout->setContentsMargins(0, 0, 0, 0);
+        root->addWidget(m_formatBar);
 
         m_splitter = new QSplitter(Qt::Horizontal, central);
         m_editor = new QPlainTextEdit(m_splitter);
@@ -66,7 +78,7 @@ public:
         m_splitter->addWidget(m_preview);
         m_splitter->setStretchFactor(0, 1);
         m_splitter->setStretchFactor(1, 1);
-        m_splitter->setSizes({480, 480});
+        m_splitter->setSizes({550, 550});
         root->addWidget(m_splitter, 1);
 
         m_status = new QLabel(central);
@@ -98,22 +110,29 @@ public:
         if (!geometry.isEmpty())
             restoreGeometry(geometry);
 
+        // Classic defaults on first run: buttons visible, two panes (edit mode).
+        const bool showButtons = settings.value(QStringLiteral("ui/showButtons"), true).toBool();
+        const bool editMode = settings.value(QStringLiteral("ui/editMode"), true).toBool();
+
         if (!initialFile.isEmpty()) {
             loadFile(initialFile);
         } else {
             m_editor->setPlainText(QStringLiteral(
                 "# Welcome to light_md\n\n"
-                "Documents open in **Reader** mode so you can focus on the text.\n\n"
+                "Write on the **left** and see the result on the *right*.\n\n"
                 "## Getting started\n\n"
-                "- Open any `.md` file to read it\n"
-                "- Press **Ctrl+E** (Options → Edit document) when you want to change it\n"
-                "- Press **Ctrl+R** or **Esc** to return to Read only\n"
-                "- Every action has a shortcut under Options\n"));
+                "- Use the buttons at the top to format your text\n"
+                "- Hide the buttons anytime with **Options → Show buttons** (Ctrl+Shift+B)\n"
+                "- **Ctrl+E** toggles the writing pane; **Ctrl+R** or **Esc** is Read only\n"
+                "- Every action also lives under **Options** with a shortcut\n"));
             m_editor->document()->setModified(false);
             updateTitle();
             updatePreview();
-            setEditMode(false);
         }
+
+        // Apply after load so a failed open still gets remembered chrome.
+        setShowButtons(showButtons);
+        setEditMode(editMode);
     }
 
     bool loadFile(const QString &path)
@@ -129,7 +148,7 @@ public:
         setFilePath(path);
         m_preview->verticalScrollBar()->setValue(0);
         updatePreview();
-        setEditMode(false);
+        // Keep the user's current Edit/Reader choice (remembered in QSettings).
         return true;
     }
 
@@ -205,6 +224,31 @@ private:
         return action;
     }
 
+    QPushButton *addBarButton(QHBoxLayout *bar, QAction *action)
+    {
+        // One QAction owns the shortcut; the button only triggers it.
+        auto *button = new QPushButton(action->text().remove(QLatin1Char('&')), this);
+        const auto tipWithShortcut = [action] {
+            const QString tip = action->toolTip();
+            const QKeySequence keys = action->shortcut();
+            if (keys.isEmpty())
+                return tip;
+            return QStringLiteral("%1 (%2)").arg(tip, keys.toString(QKeySequence::NativeText));
+        };
+        button->setToolTip(tipWithShortcut());
+        button->setStatusTip(action->statusTip());
+        button->setFocusPolicy(Qt::NoFocus);
+        connect(button, &QPushButton::clicked, action, &QAction::trigger);
+        connect(action, &QAction::changed, button, [button, action, tipWithShortcut] {
+            button->setEnabled(action->isEnabled());
+            button->setVisible(action->isVisible());
+            button->setToolTip(tipWithShortcut());
+        });
+        button->setEnabled(action->isEnabled());
+        bar->addWidget(button);
+        return button;
+    }
+
     void buildMenus()
     {
         auto *options = menuBar()->addMenu(QStringLiteral("&Options"));
@@ -235,6 +279,12 @@ private:
                                   QStringLiteral("Hide the writing pane and just read"),
                                   QKeySequence(QStringLiteral("Ctrl+R")));
 
+        m_showButtonsAction = addOption(options, QStringLiteral("Show &buttons"),
+                                        QStringLiteral("Show or hide the file and format button bars"),
+                                        QKeySequence(QStringLiteral("Ctrl+Shift+B")));
+        m_showButtonsAction->setCheckable(true);
+        m_showButtonsAction->setChecked(true);
+
         options->addSeparator();
         m_formatMenu = options->addMenu(QStringLiteral("&Format"));
         auto *actUndo = addOption(m_formatMenu, QStringLiteral("&Undo"),
@@ -258,9 +308,10 @@ private:
         auto *actNumbered = addOption(m_formatMenu, QStringLiteral("&Numbered list"),
                                       QStringLiteral("Number the selected lines: 1, 2, 3..."),
                                       QKeySequence(QStringLiteral("Ctrl+Shift+7")));
+        // Ctrl+Shift+Q often means Quit on Linux desktops; use Period instead.
         auto *actQuote = addOption(m_formatMenu, QStringLiteral("&Quote"),
                                    QStringLiteral("Mark the lines as a quote"),
-                                   QKeySequence(QStringLiteral("Ctrl+Shift+Q")));
+                                   QKeySequence(QStringLiteral("Ctrl+Shift+.")));
         auto *actLink = addOption(m_formatMenu, QStringLiteral("Lin&k"),
                                   QStringLiteral("Add a link to a web page"),
                                   QKeySequence(QStringLiteral("Ctrl+K")));
@@ -285,6 +336,11 @@ private:
             action->setCheckable(true);
             action->setData(ThemeManager::kindToString(entry.kind));
             themeGroup->addAction(action);
+            if (entry.kind == ThemeManager::Kind::Omarchy && !ThemeManager::omarchyAvailable()) {
+                action->setEnabled(false);
+                action->setToolTip(QStringLiteral("Omarchy theme is only available on Omarchy Linux"));
+                action->setShortcut(QKeySequence());
+            }
             if (entry.kind == m_themes->kind())
                 action->setChecked(true);
             connect(action, &QAction::triggered, this, [this, action] {
@@ -297,6 +353,31 @@ private:
         auto *actHelp = addOption(options, QStringLiteral("&Help"), QStringLiteral("How to use light_md"),
                                   QKeySequence::HelpContents);
 
+        // Classic file bar (same order as origin/main).
+        addBarButton(m_fileBarLayout, actNew);
+        addBarButton(m_fileBarLayout, actOpen);
+        addBarButton(m_fileBarLayout, actSave);
+        addBarButton(m_fileBarLayout, actSaveAs);
+        m_fileBarLayout->addSpacing(12);
+        addBarButton(m_fileBarLayout, actPdf);
+        addBarButton(m_fileBarLayout, actPrint);
+        m_fileBarLayout->addStretch();
+        addBarButton(m_fileBarLayout, actHelp);
+
+        // Classic format bar.
+        addBarButton(m_formatBarLayout, actUndo);
+        addBarButton(m_formatBarLayout, actRedo);
+        m_formatBarLayout->addSpacing(12);
+        addBarButton(m_formatBarLayout, actTitle);
+        addBarButton(m_formatBarLayout, actSubtitle);
+        addBarButton(m_formatBarLayout, actBold);
+        addBarButton(m_formatBarLayout, actItalic);
+        addBarButton(m_formatBarLayout, actBullets);
+        addBarButton(m_formatBarLayout, actNumbered);
+        addBarButton(m_formatBarLayout, actQuote);
+        addBarButton(m_formatBarLayout, actLink);
+        m_formatBarLayout->addStretch();
+
         connect(actNew, &QAction::triggered, this, [this] { newDocument(); });
         connect(actOpen, &QAction::triggered, this, [this] { openDocument(); });
         connect(actSave, &QAction::triggered, this, [this] { saveDocument(); });
@@ -306,6 +387,7 @@ private:
         connect(actHelp, &QAction::triggered, this, [this] { showHelp(); });
         connect(m_editAction, &QAction::toggled, this, [this](bool on) { setEditMode(on); });
         connect(actRead, &QAction::triggered, this, [this] { setEditMode(false); });
+        connect(m_showButtonsAction, &QAction::toggled, this, [this](bool on) { setShowButtons(on); });
 
         connect(actUndo, &QAction::triggered, m_editor, &QPlainTextEdit::undo);
         connect(actRedo, &QAction::triggered, m_editor, &QPlainTextEdit::redo);
@@ -325,6 +407,21 @@ private:
         connect(actLink, &QAction::triggered, this, [this] { insertLink(); });
     }
 
+    void setShowButtons(bool show)
+    {
+        m_showButtons = show;
+        if (m_fileBar)
+            m_fileBar->setVisible(show);
+        if (m_formatBar)
+            m_formatBar->setVisible(show && m_editMode);
+        if (m_showButtonsAction && m_showButtonsAction->isChecked() != show) {
+            QSignalBlocker blocker(m_showButtonsAction);
+            m_showButtonsAction->setChecked(show);
+        }
+        QSettings().setValue(QStringLiteral("ui/showButtons"), show);
+        updateStatus();
+    }
+
     void setEditMode(bool editing)
     {
         if (m_editMode == editing && m_editor->isVisible() == editing) {
@@ -332,23 +429,28 @@ private:
                 QSignalBlocker blocker(m_editAction);
                 m_editAction->setChecked(editing);
             }
+            if (m_formatBar)
+                m_formatBar->setVisible(m_showButtons && editing);
             return;
         }
         m_editMode = editing;
         m_editor->setVisible(editing);
         if (m_formatMenu)
             m_formatMenu->setEnabled(editing);
+        if (m_formatBar)
+            m_formatBar->setVisible(m_showButtons && editing);
         if (m_editAction && m_editAction->isChecked() != editing) {
             QSignalBlocker blocker(m_editAction);
             m_editAction->setChecked(editing);
         }
         if (editing) {
             if (m_splitter->sizes().value(0, 0) < 80)
-                m_splitter->setSizes({480, 480});
+                m_splitter->setSizes({550, 550});
             m_editor->setFocus(Qt::ShortcutFocusReason);
         } else {
             m_preview->setFocus(Qt::OtherFocusReason);
         }
+        QSettings().setValue(QStringLiteral("ui/editMode"), editing);
         updateStatus();
     }
 
@@ -378,8 +480,9 @@ private:
         const int words = m_editor->toPlainText().split(spaces, Qt::SkipEmptyParts).size();
         const bool modified = m_editor->document()->isModified();
         const QString mode = m_editMode ? QStringLiteral("Editing") : QStringLiteral("Reading");
-        m_status->setText(QStringLiteral("%1    Words: %2    File: %3%4")
-                              .arg(mode)
+        const QString chrome = m_showButtons ? QStringLiteral("Buttons") : QStringLiteral("Minimal");
+        m_status->setText(QStringLiteral("%1 · %2    Words: %3    File: %4%5")
+                              .arg(mode, chrome)
                               .arg(words)
                               .arg(m_filePath.isEmpty() ? QStringLiteral("(not saved)")
                                                         : QDir::toNativeSeparators(m_filePath))
@@ -407,6 +510,7 @@ private:
         return QSettings().value(QStringLiteral("lastFolder")).toString();
     }
 
+    // Visits the lines touched by the selection (or the cursor's line).
     template <typename Fn>
     void forEachSelectedLine(Fn fn)
     {
@@ -416,6 +520,7 @@ private:
         QTextDocument *doc = m_editor->document();
         QTextBlock first = doc->findBlock(cursor.selectionStart());
         QTextBlock last = doc->findBlock(cursor.selectionEnd());
+        // A selection that ends right at the start of a line does not include that line.
         if (cursor.hasSelection() && last != first && cursor.selectionEnd() == last.position())
             last = last.previous();
         const bool single = first == last;
@@ -463,6 +568,7 @@ private:
             const QString selected = cursor.selectedText();
             cursor.insertText(marks + selected + marks);
         } else {
+            // Leave the sample word selected so the user can type over it.
             const QString sample = QStringLiteral("text");
             cursor.insertText(marks + sample + marks);
             cursor.movePosition(QTextCursor::Left, QTextCursor::MoveAnchor, marks.size());
@@ -638,9 +744,13 @@ private:
         QMessageBox::information(
             this, QStringLiteral("How to use light_md"),
             QStringLiteral(
-                "<p>Documents open in <b>Reader</b> mode. Use <b>Options</b> for every action.</p>"
-                "<p><b>View</b><br>"
-                "Ctrl+E — Edit document<br>"
+                "<p>By default you get the <b>classic</b> layout: file and format buttons "
+                "plus write + preview panes. Hide the buttons anytime for a minimal look. "
+                "Your last button and Edit/Reader choices are remembered the next time you open "
+                "the app or another file.</p>"
+                "<p><b>Layout</b><br>"
+                "Ctrl+Shift+B — Show / hide buttons<br>"
+                "Ctrl+E — Edit document (show writing pane)<br>"
                 "Ctrl+R or Esc — Read only</p>"
                 "<p><b>File</b><br>"
                 "Ctrl+N New · Ctrl+O Open · Ctrl+S Save · Ctrl+Shift+S Save as<br>"
@@ -649,30 +759,42 @@ private:
                 "Ctrl+Z Undo · Ctrl+Shift+Z / Ctrl+Y Redo<br>"
                 "Ctrl+B Bold · Ctrl+I Italic · Ctrl+K Link<br>"
                 "Ctrl+1 Big title · Ctrl+2 Subtitle<br>"
-                "Ctrl+Shift+8 Bullet list · Ctrl+Shift+7 Numbered list · Ctrl+Shift+Q Quote</p>"
+                "Ctrl+Shift+8 Bullet list · Ctrl+Shift+7 Numbered list · Ctrl+Shift+. Quote</p>"
                 "<p><b>Theme</b><br>"
-                "Ctrl+Shift+1 System · Ctrl+Shift+2 Minimal · Ctrl+Shift+3 Omarchy</p>"
+                "Ctrl+Shift+1 System · Ctrl+Shift+2 Minimal · Ctrl+Shift+3 Omarchy "
+                "(Omarchy only where available)</p>"
                 "<p>F1 — Help. You can also drag a document onto the window to open it.</p>"));
     }
 
     ThemeManager *m_themes = nullptr;
+    QWidget *m_fileBar = nullptr;
+    QWidget *m_formatBar = nullptr;
+    QHBoxLayout *m_fileBarLayout = nullptr;
+    QHBoxLayout *m_formatBarLayout = nullptr;
     QSplitter *m_splitter = nullptr;
     QPlainTextEdit *m_editor = nullptr;
     QTextBrowser *m_preview = nullptr;
     QLabel *m_status = nullptr;
     QAction *m_editAction = nullptr;
+    QAction *m_showButtonsAction = nullptr;
     QMenu *m_formatMenu = nullptr;
     QTimer m_previewTimer;
     QTimer m_statusTimer;
     QString m_filePath;
     bool m_editMode = true;
+    bool m_showButtons = true;
 };
 
 static ThemeManager::Kind loadInitialTheme()
 {
     const QSettings settings;
-    if (settings.contains(QStringLiteral("theme")))
-        return ThemeManager::kindFromString(settings.value(QStringLiteral("theme")).toString());
+    if (settings.contains(QStringLiteral("theme"))) {
+        const auto kind = ThemeManager::kindFromString(settings.value(QStringLiteral("theme")).toString());
+        // Stale Omarchy choice on non-Omarchy platforms falls back to System.
+        if (kind == ThemeManager::Kind::Omarchy && !ThemeManager::omarchyAvailable())
+            return ThemeManager::Kind::System;
+        return kind;
+    }
     // First run on Omarchy: follow the desktop theme. Elsewhere keep System
     // so Windows/macOS behavior stays unchanged.
     if (ThemeManager::omarchyAvailable())
@@ -684,7 +806,7 @@ int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
     QApplication::setApplicationName(QStringLiteral("light_md"));
-    QApplication::setApplicationVersion(QStringLiteral("1.1.0"));
+    QApplication::setApplicationVersion(QStringLiteral(LIGHT_MD_VERSION));
     QApplication::setOrganizationName(QStringLiteral("light_md"));
     // Matches light_md.desktop so Wayland/Omarchy pick up the launcher icon.
     QApplication::setDesktopFileName(QStringLiteral("light_md"));
