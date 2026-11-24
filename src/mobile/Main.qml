@@ -19,8 +19,13 @@ ApplicationWindow {
 
     property bool editing: false
     property var pendingAction: null   // function to run after Save/Discard
+    property string pendingSavePath: ""
 
     function enterEdit() {
+        if (document.readOnly) {
+            errorBanner.show("This document is read-only. Use New or Open a local file to edit.")
+            return
+        }
         editor.text = document.text
         editing = true
         editor.forceActiveFocus()
@@ -32,7 +37,9 @@ ApplicationWindow {
     }
 
     function requestOpen() {
-        runOrConfirm(() => openDialog.open())
+        // Confirm after the user picks a file (openDocumentUrl), so Cancel in the
+        // picker keeps the current unsaved edits without a second prompt.
+        openDialog.open()
     }
 
     function requestNew() {
@@ -44,11 +51,43 @@ ApplicationWindow {
     }
 
     function requestSave() {
-        if (document.hasPath) {
-            if (!document.save())
+        if (document.readOnly) {
+            errorBanner.show("This document is read-only. Use New or Open a local file to edit.")
+            return
+        }
+        if (document.hasSaveTarget) {
+            if (!document.save()) {
                 errorBanner.show(document.lastError)
+                if (!document.hasSaveTarget)
+                    saveDialog.open()
+            }
         } else {
             saveDialog.open()
+        }
+    }
+
+    function openDocumentUrl(url) {
+        runOrConfirm(() => {
+            if (document.loadUrl(url)) {
+                editor.text = document.text
+                enterRead()
+                errorBanner.visible = false
+            } else {
+                errorBanner.show(document.lastError)
+            }
+        })
+    }
+
+    function finishSave(ok) {
+        root.pendingSavePath = ""
+        if (ok) {
+            errorBanner.visible = false
+            const next = root.pendingAction
+            root.pendingAction = null
+            if (next) next()
+        } else {
+            errorBanner.show(document.lastError)
+            root.pendingAction = null
         }
     }
 
@@ -59,6 +98,19 @@ ApplicationWindow {
         }
         pendingAction = action
         unsavedDialog.open()
+    }
+
+    Component.onCompleted: document.setUiReady(true)
+
+    Connections {
+        target: document
+        function onExternalOpenRequested(url) {
+            root.openDocumentUrl(url)
+        }
+        function onIdentityChanged() {
+            if (document.readOnly && root.editing)
+                root.enterRead()
+        }
     }
 
     header: ToolBar {
@@ -95,6 +147,7 @@ ApplicationWindow {
             }
             ToolButton {
                 text: "Save"
+                enabled: !document.readOnly
                 display: AbstractButton.TextOnly
                 implicitHeight: 44
                 implicitWidth: 56
@@ -102,6 +155,7 @@ ApplicationWindow {
             }
             ToolButton {
                 text: root.editing ? "Read" : "Edit"
+                enabled: root.editing || !document.readOnly
                 font.bold: true
                 display: AbstractButton.TextOnly
                 implicitHeight: 44
@@ -218,9 +272,9 @@ ApplicationWindow {
             elide: Label.ElideMiddle
             font.pixelSize: 12
             opacity: 0.8
-            text: (document.dirty ? "Unsaved · " : "")
+            text: (document.readOnly ? "Read-only · " : (document.dirty ? "Unsaved · " : ""))
                   + "Words: " + document.wordCount
-                  + (document.hasPath ? " · " + document.fileName : " · not saved")
+                  + " · " + (document.fileName || "not saved")
         }
     }
 
@@ -241,11 +295,20 @@ ApplicationWindow {
             // Save button
             const next = root.pendingAction
             root.pendingAction = null
-            if (document.hasPath) {
+            if (document.readOnly) {
+                errorBanner.show("This document is read-only. Discard changes or Cancel.")
+                return
+            }
+            if (document.hasSaveTarget) {
                 if (document.save()) {
                     if (next) next()
                 } else {
                     errorBanner.show(document.lastError)
+                    // Revoked SAF target: keep the pending Open/New/Quit and pick a new file.
+                    if (!document.hasSaveTarget) {
+                        root.pendingAction = next
+                        saveDialog.open()
+                    }
                 }
             } else {
                 // Defer the pending action until after a successful Save As.
@@ -256,7 +319,7 @@ ApplicationWindow {
         onDiscarded: {
             const next = root.pendingAction
             root.pendingAction = null
-            document.setDirty(false)
+            // Leave dirty as-is until the next action succeeds (failed open keeps edits).
             if (next) next()
         }
         onRejected: root.pendingAction = null
@@ -267,16 +330,7 @@ ApplicationWindow {
         title: "Open document"
         nameFilters: ["Markdown (*.md *.markdown *.txt)", "All files (*)"]
         fileMode: FileDialog.OpenFile
-        onAccepted: {
-            const path = selectedFile.toLocalFile()
-            if (document.load(path)) {
-                editor.text = document.text
-                root.enterRead()
-                errorBanner.visible = false
-            } else {
-                errorBanner.show(document.lastError)
-            }
-        }
+        onAccepted: root.openDocumentUrl(selectedFile)
     }
 
     FileDialog {
@@ -286,33 +340,59 @@ ApplicationWindow {
         fileMode: FileDialog.SaveFile
         defaultSuffix: "md"
         onAccepted: {
-            let path = selectedFile.toLocalFile()
-            if (!/\.(md|markdown|txt)$/i.test(path))
-                path += ".md"
-            if (document.save(path)) {
-                errorBanner.visible = false
-                const next = root.pendingAction
-                root.pendingAction = null
-                if (next) next()
+            // Desktop: file:// via Document/QSaveFile. Android SAF: content:// via saveUrl.
+            const localPath = document.localPathFromUrl(selectedFile)
+            if (localPath) {
+                const path = document.finalizeLocalSavePath(selectedFile)
+                // Qt's picker may confirm before applying defaultSuffix; re-check the final path.
+                if (document.pathExists(path)) {
+                    root.pendingSavePath = path
+                    overwriteDialog.open()
+                    return
+                }
+                root.finishSave(document.save(path))
             } else {
-                errorBanner.show(document.lastError)
-                root.pendingAction = null
+                root.finishSave(document.saveUrl(selectedFile))
             }
         }
         onRejected: root.pendingAction = null
+    }
+
+    Dialog {
+        id: overwriteDialog
+        anchors.centerIn: Overlay.overlay
+        modal: true
+        title: "Replace file?"
+        standardButtons: Dialog.Yes | Dialog.No
+        parent: Overlay.overlay
+
+        Label {
+            wrapMode: Text.Wrap
+            text: "A file with that name already exists. Do you want to replace it?"
+        }
+
+        onAccepted: root.finishSave(document.save(root.pendingSavePath))
+        onRejected: {
+            root.pendingSavePath = ""
+            root.pendingAction = null
+        }
     }
 
     onClosing: (close) => {
         if (!document.dirty)
             return
         close.accepted = false
-        pendingAction = () => Qt.quit()
+        pendingAction = () => {
+            document.dirty = false
+            Qt.quit()
+        }
         unsavedDialog.open()
     }
 
     // Phone-friendly shortcuts when a keyboard is attached.
     Shortcut {
         sequences: [StandardKey.Save]
+        enabled: !document.readOnly
         onActivated: root.requestSave()
     }
     Shortcut {
@@ -329,6 +409,7 @@ ApplicationWindow {
     }
     Shortcut {
         sequence: "Ctrl+E"
+        enabled: root.editing || !document.readOnly
         onActivated: root.editing ? root.enterRead() : root.enterEdit()
     }
 }

@@ -59,7 +59,21 @@ need() {
 need "$ANDROID_SDK_ROOT/platform-tools/adb"
 need "$ANDROID_NDK_ROOT"
 need "$QT_ANDROID_ROOT/bin/qt-cmake"
-need "$QT_ANDROID_ROOT/bin/androiddeployqt"
+
+# aqt Android kits often omit androiddeployqt; host Qt provides it.
+ANDROIDDEPLOYQT="${ANDROIDDEPLOYQT:-}"
+if [[ -z "$ANDROIDDEPLOYQT" ]]; then
+  for candidate in \
+      "$QT_ANDROID_ROOT/bin/androiddeployqt" \
+      /usr/lib/qt6/bin/androiddeployqt \
+      /usr/lib/qt6/bin/androiddeployqt6; do
+    if [[ -x "$candidate" ]]; then
+      ANDROIDDEPLOYQT="$candidate"
+      break
+    fi
+  done
+fi
+need "$ANDROIDDEPLOYQT"
 
 BUILD_DIR="$ROOT/build-android-$ABI"
 INSTALL_DIR="$BUILD_DIR/install"
@@ -79,36 +93,30 @@ cmake_cmd=(
   -DBUILD_TESTING=OFF
 )
 
+export QT_HOST_PATH="${QT_HOST_PATH:-/usr}"
+export ANDROID_SDK_ROOT ANDROID_HOME ANDROID_NDK_ROOT JAVA_HOME
+# Prefer host androiddeployqt when the aqt kit does not ship one.
+export PATH="$(dirname "$ANDROIDDEPLOYQT"):$PATH"
+
 echo "Configuring ($ABI, $BUILD_TYPE)..."
 "${cmake_cmd[@]}"
 
-echo "Building..."
-cmake --build "$BUILD_DIR" --target light_md_mobile
-
-# androiddeployqt needs a deployment settings JSON produced by Qt's Android extras.
-SETTINGS="$(find "$BUILD_DIR" -name 'android-light_md_mobile-deployment-settings.json' | head -1 || true)"
-if [[ -z "$SETTINGS" ]]; then
-  echo "No android deployment settings found under $BUILD_DIR" >&2
-  echo "Ensure QT_ANDROID_ROOT points at a Qt for Android kit." >&2
-  exit 1
-fi
+echo "Building and packaging APK..."
+# Qt's generated apk target stages libs under android-build/ then runs androiddeployqt.
+cmake --build "$BUILD_DIR" --target light_md_mobile_make_apk
 
 APK_DIR="$BUILD_DIR/apk"
 mkdir -p "$APK_DIR"
-DEPLOY_ARGS=(
-  --input "$SETTINGS"
-  --output "$APK_DIR"
-  --android-platform android-35
-  --jdk "${JAVA_HOME:-}"
-  --gradle
-)
-if [[ "$BUILD_TYPE" == "Release" ]]; then
-  DEPLOY_ARGS+=(--release)
+# androiddeployqt writes this canonical path for the cmake apk target.
+BUILT_APK="$BUILD_DIR/android-build/light_md_mobile.apk"
+if [[ ! -f "$BUILT_APK" ]]; then
+  echo "APK not found at $BUILT_APK" >&2
+  exit 1
 fi
-
-echo "Packaging APK..."
-"$QT_ANDROID_ROOT/bin/androiddeployqt" "${DEPLOY_ARGS[@]}"
+SUFFIX=$(echo "$BUILD_TYPE" | tr '[:upper:]' '[:lower:]')
+OUT_APK="$APK_DIR/light_md_mobile-${ABI}-${SUFFIX}.apk"
+cp -f "$BUILT_APK" "$OUT_APK"
 
 echo
-find "$APK_DIR" -name '*.apk' -print
-echo "Install with: adb install -r <apk>"
+echo "$OUT_APK"
+echo "Install with: adb install -r $OUT_APK"

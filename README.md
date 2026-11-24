@@ -67,6 +67,8 @@ The same build can produce `build/bin/light_md_mobile`: a touch-oriented QML she
 
 ### Android APK
 
+The arm64 debug APK opens Markdown from **Files → Open with → light_md** (`content://`, read-only). New/edited docs save through the system picker (`file://` on desktop, SAF `content://` on Android).
+
 1. Install a local SDK/NDK: `./bin/setup-android-sdk`
 2. Use **JDK 17 or 21** for Gradle (system JDK 27+ is rejected). Example:
 
