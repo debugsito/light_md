@@ -4,6 +4,10 @@ A lightweight Markdown editor in C++ and Qt 6, made for people who don't work in
 
 Write on the left and read the nicely formatted result on the right. You don't need to know Markdown: the buttons at the top do the formatting for you.
 
+![light_md: the writing pane on the left and the formatted result on the right](docs/screenshot.png)
+
+**[Download light_md for Windows](https://github.com/josel120/light_md/releases/latest)**: unzip it and open `bin\light_md.exe`. Nothing to install.
+
 ## What it does
 
 - Two panes: writing on the left, reading on the right, with an instant preview.
