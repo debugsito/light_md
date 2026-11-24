@@ -1,5 +1,7 @@
 # light_md
 
+**English** | [Español](README.es.md) | [Português](README.pt.md) | [Français](README.fr.md) | [Deutsch](README.de.md)
+
 A lightweight Markdown editor in C++ and Qt 6, made for people who don't work in tech.
 
 Write on the left and read the nicely formatted result on the right. You don't need to know Markdown: the buttons at the top do the formatting for you.
