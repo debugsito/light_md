@@ -1,3 +1,4 @@
+#include "core/document.h"
 #include "theme.h"
 
 #include <QAbstractButton>
@@ -8,7 +9,6 @@
 #include <QDir>
 #include <QDragEnterEvent>
 #include <QDropEvent>
-#include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QInputDialog>
@@ -24,7 +24,6 @@
 #include <QPrintDialog>
 #include <QPrinter>
 #include <QRegularExpression>
-#include <QSaveFile>
 #include <QScrollBar>
 #include <QSettings>
 #include <QSignalBlocker>
@@ -118,15 +117,17 @@ public:
 
     bool loadFile(const QString &path)
     {
-        QFile file(path);
-        if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-            QMessageBox::warning(this, QStringLiteral("Could not open"),
-                                 QStringLiteral("Could not read the file:\n%1").arg(path));
+        QString text;
+        // On failure Document keeps its previous path and leaves the editor alone.
+        if (!m_document.load(path, &text)) {
+            QMessageBox::warning(this, QStringLiteral("Could not open"), m_document.lastError());
             return false;
         }
-        m_editor->setPlainText(QString::fromUtf8(file.readAll()));
+        m_editor->setPlainText(text);
         m_editor->document()->setModified(false);
-        setFilePath(path);
+        rememberFolder(path);
+        updateTitle();
+        updateStatus();
         m_preview->verticalScrollBar()->setValue(0);
         updatePreview();
         setEditMode(false);
@@ -374,32 +375,26 @@ private:
 
     void updateStatus()
     {
-        static const QRegularExpression spaces(QStringLiteral("\\s+"));
-        const int words = m_editor->toPlainText().split(spaces, Qt::SkipEmptyParts).size();
+        const int words = Document::wordCount(m_editor->toPlainText());
         const bool modified = m_editor->document()->isModified();
         const QString mode = m_editMode ? QStringLiteral("Editing") : QStringLiteral("Reading");
         m_status->setText(QStringLiteral("%1    Words: %2    File: %3%4")
                               .arg(mode)
                               .arg(words)
-                              .arg(m_filePath.isEmpty() ? QStringLiteral("(not saved)")
-                                                        : QDir::toNativeSeparators(m_filePath))
+                              .arg(m_document.hasPath() ? QDir::toNativeSeparators(m_document.path())
+                                                        : QStringLiteral("(not saved)"))
                               .arg(modified ? QStringLiteral("    (unsaved changes)") : QString()));
     }
 
     void updateTitle()
     {
-        const QString name = m_filePath.isEmpty() ? QStringLiteral("New document")
-                                                  : QFileInfo(m_filePath).fileName();
-        setWindowTitle(QStringLiteral("%1[*] - light_md").arg(name));
+        setWindowTitle(QStringLiteral("%1[*] - light_md").arg(m_document.fileName()));
     }
 
-    void setFilePath(const QString &path)
+    void rememberFolder(const QString &path)
     {
-        m_filePath = path;
         if (!path.isEmpty())
             QSettings().setValue(QStringLiteral("lastFolder"), QFileInfo(path).absolutePath());
-        updateTitle();
-        updateStatus();
     }
 
     QString lastFolder() const
@@ -528,7 +523,9 @@ private:
             return;
         m_editor->clear();
         m_editor->document()->setModified(false);
-        setFilePath(QString());
+        m_document.clear();
+        updateTitle();
+        updateStatus();
         updatePreview();
         setEditMode(true);
     }
@@ -547,45 +544,29 @@ private:
 
     bool writeTo(const QString &path)
     {
-        // QSaveFile uses a unique temp name and replaces the target only on
-        // commit(), so a sibling like doc.md.tmp is never clobbered and a
-        // failed rename cannot delete both the old and new document.
-        QSaveFile file(path);
-        if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-            QMessageBox::warning(this, QStringLiteral("Could not save"),
-                                 QStringLiteral("Could not write to the file:\n%1").arg(path));
-            return false;
-        }
-        const QByteArray bytes = m_editor->toPlainText().toUtf8();
-        if (file.write(bytes) != bytes.size()) {
-            file.cancelWriting();
-            QMessageBox::warning(this, QStringLiteral("Could not save"),
-                                 QStringLiteral("Could not write to the file:\n%1").arg(path));
-            return false;
-        }
-        if (!file.commit()) {
-            QMessageBox::warning(this, QStringLiteral("Could not save"),
-                                 QStringLiteral("Could not finish saving:\n%1").arg(path));
+        if (!m_document.save(path, m_editor->toPlainText())) {
+            QMessageBox::warning(this, QStringLiteral("Could not save"), m_document.lastError());
             return false;
         }
         m_editor->document()->setModified(false);
-        setFilePath(path);
+        rememberFolder(path);
+        updateTitle();
+        updateStatus();
         return true;
     }
 
     bool saveDocument()
     {
-        if (m_filePath.isEmpty())
+        if (!m_document.hasPath())
             return saveDocumentAs();
-        return writeTo(m_filePath);
+        return writeTo(m_document.path());
     }
 
     QString suggestedPath(const QString &extension) const
     {
-        const QString base = m_filePath.isEmpty() ? QStringLiteral("document")
-                                                  : QFileInfo(m_filePath).completeBaseName();
-        const QString folder = m_filePath.isEmpty() ? lastFolder() : QFileInfo(m_filePath).absolutePath();
-        return folder.isEmpty() ? base + extension : QDir(folder).filePath(base + extension);
+        const QString folder =
+            m_document.hasPath() ? QFileInfo(m_document.path()).absolutePath() : lastFolder();
+        return m_document.suggestedPath(folder, extension);
     }
 
     bool saveDocumentAs()
@@ -656,6 +637,7 @@ private:
     }
 
     ThemeManager *m_themes = nullptr;
+    Document m_document;
     QSplitter *m_splitter = nullptr;
     QPlainTextEdit *m_editor = nullptr;
     QTextBrowser *m_preview = nullptr;
@@ -664,7 +646,6 @@ private:
     QMenu *m_formatMenu = nullptr;
     QTimer m_previewTimer;
     QTimer m_statusTimer;
-    QString m_filePath;
     bool m_editMode = true;
 };
 
