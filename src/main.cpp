@@ -24,6 +24,7 @@
 #include <QPrintDialog>
 #include <QPrinter>
 #include <QRegularExpression>
+#include <QSaveFile>
 #include <QScrollBar>
 #include <QSettings>
 #include <QSignalBlocker>
@@ -546,30 +547,23 @@ private:
 
     bool writeTo(const QString &path)
     {
-        // Atomic-ish save: write beside the target, then rename into place.
-        const QString tempPath = path + QStringLiteral(".tmp");
-        QFile file(tempPath);
+        // QSaveFile uses a unique temp name and replaces the target only on
+        // commit(), so a sibling like doc.md.tmp is never clobbered and a
+        // failed rename cannot delete both the old and new document.
+        QSaveFile file(path);
         if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
             QMessageBox::warning(this, QStringLiteral("Could not save"),
                                  QStringLiteral("Could not write to the file:\n%1").arg(path));
             return false;
         }
-        if (file.write(m_editor->toPlainText().toUtf8()) < 0 || !file.flush()) {
-            file.close();
-            QFile::remove(tempPath);
+        const QByteArray bytes = m_editor->toPlainText().toUtf8();
+        if (file.write(bytes) != bytes.size()) {
+            file.cancelWriting();
             QMessageBox::warning(this, QStringLiteral("Could not save"),
                                  QStringLiteral("Could not write to the file:\n%1").arg(path));
             return false;
         }
-        file.close();
-        if (QFile::exists(path) && !QFile::remove(path)) {
-            QFile::remove(tempPath);
-            QMessageBox::warning(this, QStringLiteral("Could not save"),
-                                 QStringLiteral("Could not replace the file:\n%1").arg(path));
-            return false;
-        }
-        if (!QFile::rename(tempPath, path)) {
-            QFile::remove(tempPath);
+        if (!file.commit()) {
             QMessageBox::warning(this, QStringLiteral("Could not save"),
                                  QStringLiteral("Could not finish saving:\n%1").arg(path));
             return false;
