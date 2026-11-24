@@ -1,0 +1,114 @@
+#!/usr/bin/env bash
+# Cross-build light_md_mobile for Android and package an APK with androiddeployqt6.
+#
+# Prerequisites (once):
+#   1. ./bin/setup-android-sdk
+#   2. Qt for Android matching this host Qt major (via aqtinstall), e.g.:
+#        pipx install aqtinstall
+#        aqt install-qt linux android 6.12.0 android_arm64_v8a -O "$HOME/Qt"
+#   3. export QT_ANDROID_ROOT="$HOME/Qt/6.12.0/android_arm64_v8a"
+#
+# Usage:
+#   ./bin/build-android              # arm64-v8a debug APK
+#   ./bin/build-android --release
+set -euo pipefail
+
+ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+ABI="${ANDROID_ABI:-arm64-v8a}"
+BUILD_TYPE="Debug"
+for arg in "$@"; do
+  case "$arg" in
+    --release) BUILD_TYPE="Release" ;;
+    --abi=*) ABI="${arg#--abi=}" ;;
+  esac
+done
+
+: "${ANDROID_SDK_ROOT:=$HOME/Android/Sdk}"
+: "${ANDROID_HOME:=$ANDROID_SDK_ROOT}"
+if [[ -z "${ANDROID_NDK_ROOT:-}" ]]; then
+  ANDROID_NDK_ROOT="$(find "$ANDROID_SDK_ROOT/ndk" -mindepth 1 -maxdepth 1 -type d | sort | tail -1 || true)"
+fi
+: "${QT_ANDROID_ROOT:=$HOME/Qt/6.12.0/android_${ABI//-/_}}"
+# aqt uses android_arm64_v8a folder names
+case "$ABI" in
+  arm64-v8a) QT_ANDROID_ROOT="${QT_ANDROID_ROOT:-$HOME/Qt/6.12.0/android_arm64_v8a}" ;;
+  armeabi-v7a) QT_ANDROID_ROOT="${HOME}/Qt/6.12.0/android_armv7" ;;
+  x86_64) QT_ANDROID_ROOT="${HOME}/Qt/6.12.0/android_x86_64" ;;
+esac
+
+# AGP/Gradle reject brand-new JDKs (e.g. 27 → class file 71). Prefer 21, then 17.
+if [[ -z "${JAVA_HOME:-}" || ! -x "${JAVA_HOME}/bin/java" ]]; then
+  for candidate in \
+      "$HOME/.local/jdk/jdk-21" \
+      /usr/lib/jvm/java-21-openjdk \
+      /usr/lib/jvm/java-17-openjdk; do
+    if [[ -x "$candidate/bin/java" ]]; then
+      export JAVA_HOME="$candidate"
+      break
+    fi
+  done
+fi
+if [[ -n "${JAVA_HOME:-}" ]]; then
+  export PATH="$JAVA_HOME/bin:$PATH"
+fi
+
+need() {
+  [[ -e "$1" ]] || { echo "Missing $1" >&2; exit 1; }
+}
+
+need "$ANDROID_SDK_ROOT/platform-tools/adb"
+need "$ANDROID_NDK_ROOT"
+need "$QT_ANDROID_ROOT/bin/qt-cmake"
+need "$QT_ANDROID_ROOT/bin/androiddeployqt"
+
+BUILD_DIR="$ROOT/build-android-$ABI"
+INSTALL_DIR="$BUILD_DIR/install"
+mkdir -p "$BUILD_DIR"
+
+cmake_cmd=(
+  "$QT_ANDROID_ROOT/bin/qt-cmake"
+  -S "$ROOT"
+  -B "$BUILD_DIR"
+  -G Ninja
+  -DCMAKE_BUILD_TYPE="$BUILD_TYPE"
+  -DANDROID_SDK_ROOT="$ANDROID_SDK_ROOT"
+  -DANDROID_NDK_ROOT="$ANDROID_NDK_ROOT"
+  -DANDROID_ABI="$ABI"
+  -DANDROID_PLATFORM=android-28
+  -DLIGHT_MD_BUILD_MOBILE=ON
+  -DBUILD_TESTING=OFF
+)
+
+echo "Configuring ($ABI, $BUILD_TYPE)..."
+"${cmake_cmd[@]}"
+
+echo "Building..."
+cmake --build "$BUILD_DIR" --target light_md_mobile
+
+# androiddeployqt needs a deployment settings JSON produced by Qt's Android extras.
+SETTINGS="$(find "$BUILD_DIR" -name 'android-light_md_mobile-deployment-settings.json' | head -1 || true)"
+if [[ -z "$SETTINGS" ]]; then
+  echo "No android deployment settings found under $BUILD_DIR" >&2
+  echo "Ensure QT_ANDROID_ROOT points at a Qt for Android kit." >&2
+  exit 1
+fi
+
+APK_DIR="$BUILD_DIR/apk"
+mkdir -p "$APK_DIR"
+DEPLOY_ARGS=(
+  --input "$SETTINGS"
+  --output "$APK_DIR"
+  --android-platform android-35
+  --jdk "${JAVA_HOME:-}"
+  --gradle
+)
+if [[ "$BUILD_TYPE" == "Release" ]]; then
+  DEPLOY_ARGS+=(--release)
+fi
+
+echo "Packaging APK..."
+"$QT_ANDROID_ROOT/bin/androiddeployqt" "${DEPLOY_ARGS[@]}"
+
+echo
+find "$APK_DIR" -name '*.apk' -print
+echo "Install with: adb install -r <apk>"

@@ -4,9 +4,15 @@ project(light_md VERSION 1.1.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-option(LIGHT_MD_BUILD_MOBILE "Build the QML mobile UI (desktop preview / future Android)" ON)
+option(LIGHT_MD_BUILD_MOBILE "Build the QML mobile UI (desktop preview / Android)" ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Core Widgets PrintSupport)
+# Desktop Widgets are not used on Android; keep the phone APK lean.
+if(NOT ANDROID)
+    find_package(Qt6 REQUIRED COMPONENTS Core Widgets PrintSupport)
+else()
+    find_package(Qt6 REQUIRED COMPONENTS Core)
+    set(LIGHT_MD_BUILD_MOBILE ON CACHE BOOL "" FORCE)
+endif()
 find_package(Qt6 COMPONENTS Test QUIET)
 if(LIGHT_MD_BUILD_MOBILE)
     find_package(Qt6 REQUIRED COMPONENTS Quick QuickControls2)
@@ -22,34 +28,36 @@ target_include_directories(light_md_core PUBLIC src)
 target_link_libraries(light_md_core PUBLIC Qt6::Core)
 set_target_properties(light_md_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
-qt_add_executable(light_md
-    src/main.cpp
-    src/theme.cpp
-    src/theme.h
-)
-
-target_link_libraries(light_md PRIVATE light_md_core Qt6::Widgets Qt6::PrintSupport)
-
-set_target_properties(light_md PROPERTIES
-    WIN32_EXECUTABLE TRUE
-)
-
-install(TARGETS light_md BUNDLE DESTINATION . RUNTIME DESTINATION bin)
-
-if(UNIX AND NOT APPLE)
-    install(FILES packaging/linux/light_md.desktop
-            DESTINATION share/applications)
-    install(FILES packaging/linux/light_md.svg
-            DESTINATION share/icons/hicolor/scalable/apps)
-endif()
-
-if(WIN32)
-    qt_generate_deploy_app_script(
-        TARGET light_md
-        OUTPUT_SCRIPT deploy_script
-        NO_UNSUPPORTED_PLATFORM_ERROR
+if(NOT ANDROID)
+    qt_add_executable(light_md
+        src/main.cpp
+        src/theme.cpp
+        src/theme.h
     )
-    install(SCRIPT ${deploy_script})
+
+    target_link_libraries(light_md PRIVATE light_md_core Qt6::Widgets Qt6::PrintSupport)
+
+    set_target_properties(light_md PROPERTIES
+        WIN32_EXECUTABLE TRUE
+    )
+
+    install(TARGETS light_md BUNDLE DESTINATION . RUNTIME DESTINATION bin)
+
+    if(UNIX AND NOT APPLE)
+        install(FILES packaging/linux/light_md.desktop
+                DESTINATION share/applications)
+        install(FILES packaging/linux/light_md.svg
+                DESTINATION share/icons/hicolor/scalable/apps)
+    endif()
+
+    if(WIN32)
+        qt_generate_deploy_app_script(
+            TARGET light_md
+            OUTPUT_SCRIPT deploy_script
+            NO_UNSUPPORTED_PLATFORM_ERROR
+        )
+        install(SCRIPT ${deploy_script})
+    endif()
 endif()
 
 # Core tests are optional so packaging / desktop-only Qt installs can skip them.
@@ -90,4 +98,21 @@ if(LIGHT_MD_BUILD_MOBILE)
         WIN32_EXECUTABLE TRUE
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
     )
+
+    if(ANDROID)
+        set_target_properties(light_md_mobile PROPERTIES
+            QT_ANDROID_PACKAGE_SOURCE_DIR "${CMAKE_SOURCE_DIR}/packaging/android"
+            QT_ANDROID_PACKAGE_NAME "org.light_md.app"
+            QT_ANDROID_APP_NAME "light_md"
+            QT_ANDROID_VERSION_NAME "${PROJECT_VERSION}"
+            QT_ANDROID_VERSION_CODE 110
+            # AGP 9.x + androidx.core 1.17 need compileSdk >= 36.
+            QT_ANDROID_COMPILE_SDK_VERSION "36"
+            QT_ANDROID_SDK_BUILD_TOOLS_REVISION "36.0.0"
+            QT_ANDROID_TARGET_SDK_VERSION "35"
+            QT_ANDROID_MIN_SDK_VERSION "28"
+            # Extract .so at install time (Qt needs this; avoid extractNativeLibs in the manifest).
+            QT_ANDROID_LEGACY_PACKAGING TRUE
+        )
+    endif()
 endif()

@@ -1,4 +1,7 @@
 build/
+build-android-*/
+*.apk
+aqtinstall.log
 *.user
 .DS_Store
 dist/

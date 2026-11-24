@@ -14,17 +14,20 @@ int main(int argc, char *argv[])
     QGuiApplication::setOrganizationName(QStringLiteral("light_md"));
     QGuiApplication::setDesktopFileName(QStringLiteral("light_md"));
 
-    QQuickStyle::setStyle(QStringLiteral("Basic"));
+    // Material reads well on phones and follows the system light/dark setting.
+    QQuickStyle::setStyle(QStringLiteral("Material"));
 
     DocumentController document;
     const QStringList args = QGuiApplication::arguments();
-    if (args.size() > 1)
-        document.load(args.at(1));
-    else {
+    if (args.size() > 1) {
+        if (!document.load(args.at(1)))
+            qWarning("Could not open %s: %s", qPrintable(args.at(1)), qPrintable(document.lastError()));
+    } else {
         document.setText(QStringLiteral(
             "# light_md mobile\n\n"
             "Reader first. Tap **Edit** to change the text.\n\n"
-            "- Open and Save use the system file dialog\n"
+            "- **Open** / **Save** use the system file picker\n"
+            "- **Esc** or **Read** returns to the formatted page\n"
             "- Shared Document core with the desktop app\n"));
         document.setDirty(false);
     }

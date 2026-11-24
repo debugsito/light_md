@@ -59,10 +59,38 @@ On first launch under Omarchy, the theme defaults to **Omarchy** and updates whe
 
 ### Mobile UI preview (Linux / desktop QML)
 
-The same build can produce `build/bin/light_md_mobile`: a touch-oriented QML shell (Reader / Edit / Open / Save) on the shared `Document` core. This is the Android UI prototype; turn it off with `-DLIGHT_MD_BUILD_MOBILE=OFF`.
+The same build can produce `build/bin/light_md_mobile`: a touch-oriented QML shell (Reader / Edit / Open / Save) on the shared `Document` core. Turn it off with `-DLIGHT_MD_BUILD_MOBILE=OFF`.
 
 ```bash
 ./build/bin/light_md_mobile path/to/file.md
+```
+
+### Android APK
+
+1. Install a local SDK/NDK: `./bin/setup-android-sdk`
+2. Use **JDK 17 or 21** for Gradle (system JDK 27+ is rejected). Example:
+
+```bash
+# Temurin 21 under ~/.local/jdk/jdk-21, or: pacman -S jdk21-openjdk
+export JAVA_HOME="$HOME/.local/jdk/jdk-21"
+```
+
+3. Install Qt for Android (same major as your host Qt). Prefer system host tools (`QT_HOST_PATH=/usr`) so ICU versions match:
+
+```bash
+pipx install aqtinstall
+aqt install-qt linux android 6.12.0 android_arm64_v8a -O "$HOME/Qt"
+export QT_ANDROID_ROOT="$HOME/Qt/6.12.0/android_arm64_v8a"
+export ANDROID_SDK_ROOT="$HOME/Android/Sdk"
+export ANDROID_NDK_ROOT="$ANDROID_SDK_ROOT/ndk/26.1.10909125"
+export QT_HOST_PATH=/usr
+```
+
+4. Build and package:
+
+```bash
+./bin/build-android
+adb install -r build-android-arm64-v8a/android-build/build/outputs/apk/debug/*.apk
 ```
 
 

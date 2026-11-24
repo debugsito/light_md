@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# Install a user-local Android SDK + NDK suitable for Qt androiddeployqt.
+set -euo pipefail
+
+SDK_ROOT="${ANDROID_SDK_ROOT:-$HOME/Android/Sdk}"
+CMDLINE_VERSION="13114758"
+CMDLINE_ZIP="commandlinetools-linux-${CMDLINE_VERSION}_latest.zip"
+CMDLINE_URL="https://dl.google.com/android/repository/${CMDLINE_ZIP}"
+TMP="$(mktemp -d)"
+
+cleanup() { rm -rf "$TMP"; }
+trap cleanup EXIT
+
+mkdir -p "$SDK_ROOT/cmdline-tools"
+if [[ ! -x "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" ]]; then
+  echo "Downloading Android command-line tools..."
+  wget -q --show-progress -O "$TMP/$CMDLINE_ZIP" "$CMDLINE_URL"
+  unzip -q "$TMP/$CMDLINE_ZIP" -d "$TMP"
+  rm -rf "$SDK_ROOT/cmdline-tools/latest"
+  mkdir -p "$SDK_ROOT/cmdline-tools/latest"
+  # Zip contains a top-level "cmdline-tools" directory.
+  mv "$TMP"/cmdline-tools/* "$SDK_ROOT/cmdline-tools/latest/"
+fi
+
+export ANDROID_SDK_ROOT="$SDK_ROOT"
+export ANDROID_HOME="$SDK_ROOT"
+yes | "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK_ROOT" --licenses >/tmp/android-sdk-licenses.log || true
+
+"$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK_ROOT" \
+  "platform-tools" \
+  "platforms;android-35" \
+  "platforms;android-36" \
+  "build-tools;35.0.0" \
+  "build-tools;36.0.0" \
+  "ndk;26.1.10909125"
+
+echo
+echo "SDK ready at $SDK_ROOT"
+echo "Add to your shell:"
+echo "  export ANDROID_SDK_ROOT=\"$SDK_ROOT\""
+echo "  export ANDROID_HOME=\"\$ANDROID_SDK_ROOT\""
+echo "  export ANDROID_NDK_ROOT=\"\$ANDROID_SDK_ROOT/ndk/26.1.10909125\""
+echo "  export PATH=\"\$ANDROID_SDK_ROOT/platform-tools:\$PATH\""
+echo "Gradle/androiddeployqt need JDK 17 or 21 (not 27+):"
+echo "  export JAVA_HOME=\"\$HOME/.local/jdk/jdk-21\"   # e.g. Temurin 21"
