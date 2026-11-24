@@ -2,9 +2,9 @@
 
 **English** | [Español](README.es.md) | [Português](README.pt.md) | [Français](README.fr.md) | [Deutsch](README.de.md)
 
-A lightweight Markdown editor in C++ and Qt 6, made for people who don't work in tech.
+A lightweight Markdown editor in C++ and Qt 6, for everyone.
 
-Write on the left and read the nicely formatted result on the right. You don't need to know Markdown: the buttons at the top do the formatting for you.
+Write on the left and see the formatted result on the right, instantly. New to Markdown? The buttons at the top do the formatting for you. Already know it? Just type, use keyboard shortcuts, and keep working with plain `.md` files.
 
 ![light_md: the writing pane on the left and the formatted result on the right](docs/screenshot.png)
 
